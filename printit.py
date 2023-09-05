@@ -166,10 +166,10 @@ def calculate_max_font_size(width, text, font_path, start_size=10, end_size=200,
     for size in range(start_size, end_size, step):
         font = ImageFont.truetype(font_path, size)
         adjusted_lines = []
-        for line in text.split('\n'):
+        for line in text.split():
             adjusted_lines.append(line)
 
-        max_text_width = max([draw.textbbox((0, 0), line, font=font)[2] for line in adjusted_lines if line.strip()])
+        max_text_width = max([draw.textbbox((0, 0), line, font=font)[2] for line in adjusted_lines if line])
         
         if max_text_width <= width:
             max_font_size = size
@@ -201,32 +201,62 @@ fnt = ImageFont.truetype(font, font_size) # Initialize Font
 
 line_spacing = 20  # Adjust this value to set the desired line spacing
 
+def rearrange_line(line, font, max_size):
+    draw = ImageDraw.Draw(Image.new("RGB", (1, 1), color="white"))
+    new_text = []
+    temp_line = ""
+    for word in line.split():
+        #print("out if:"+word)
+        if draw.textbbox((0, 0), temp_line +" "+ word, font=font)[2] <= 696:
+            #print("if print: "+word)
+            temp_line += word + " "
+        else:
+            new_text.append(temp_line[0:-1])
+            temp_line = word
+
+    new_text.append(temp_line)
+    #print(new_text)
+
+    return "\n".join(new_text)
+
+new_text = ""
+for line in text.split("\n"):
+    new_text += rearrange_line(line, fnt, max_size)
+    new_text += "\n"
+
+print(new_text)
+
 # Calculate the new image height based on the bounding boxes
-new_image_height = calculate_actual_image_height_with_empty_lines(text, fnt, line_spacing)
+new_image_height = calculate_actual_image_height_with_empty_lines(new_text, fnt    , line_spacing)
+
 
 # Create Image
 y = 5  # Start from
 img = Image.new("RGB", (696, new_image_height+10), color="white")
 d = ImageDraw.Draw(img)
 
-# Draw Text
-for line in text.split('\n'):
-    text_width = 0  # Initialize to zero
 
+# Draw Text
+for line in new_text.split('\n'):
+    #print(line)
+    text_width = 0  # Initialize to zero
+    
+    #print(l)
+        
     if line.strip():  # For non-empty lines
         bbox = d.textbbox((0, y), line, font=fnt)
         text_width = bbox[2] - bbox[0]
         text_height = bbox[3] - bbox[1]
     else:  # For empty lines
         text_height = fnt.getbbox("x ")[3] - fnt.getbbox("x")[1]  # Use the height of an x as the height for empty lines
-
+        
     if alignment == "center":
         x = (696 - text_width) // 2
     elif alignment == "right":
         x = 696 - text_width
     else:
         x = 0
-
+    #print(y)
     d.text((x, y), line, font=fnt, fill=(0, 0, 0))
     y += text_height + line_spacing  # Move down based on text height and line spacing
 
