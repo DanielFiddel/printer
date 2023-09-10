@@ -201,6 +201,7 @@ fnt = ImageFont.truetype(font, font_size) # Initialize Font
 
 line_spacing = 20  # Adjust this value to set the desired line spacing
 
+
 def rearrange_line(line, font, max_size):
     draw = ImageDraw.Draw(Image.new("RGB", (1, 1), color="white"))
     new_text = []
