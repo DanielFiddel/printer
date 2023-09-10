@@ -4,7 +4,10 @@ import requests, io, base64
 import subprocess
 import tempfile
 import os
+import re
 import slugify
+import random, string
+
 
 # Function to find .ttf fonts
 def find_fonts():
@@ -74,6 +77,19 @@ def print_image(image):
     # Run the print command
     subprocess.run(command, shell=True)
 
+def find_url(string):
+    url_pattern = re.compile(r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+')
+    urls = re.findall(url_pattern, string)
+    return urls
+
+def img_concat_v(im1, im2):
+    image_width=696
+    dst = Image.new('RGB', (im1.width, im1.height + image_width))
+    dst.paste(im1, (0, 0))
+    im2 = im2.resize((image_width, image_width))
+
+    dst.paste(im2, (0, im1.height))
+    return dst
 
 
 
@@ -84,7 +100,10 @@ def print_image(image):
 st.title('STICKER FACTORY @ TAMI')
 
 st.subheader("hard copies of images, text and txt2img")
-uploaded_image = st.file_uploader("Choose an image file (png/jpg/gif)", type=['png', 'jpg', 'gif'])
+st.divider() 
+st.subheader(":printer: a sticker")
+
+uploaded_image = st.file_uploader("Choose an image file to :printer:", type=['png', 'jpg', 'gif'],)
 
 if uploaded_image is not None:
     original_image = Image.open(uploaded_image).convert('RGB')
@@ -142,8 +161,9 @@ if uploaded_image is not None:
 
 
 st.divider() 
-st.subheader("or print some text")
+st.subheader(":printer: a label")
 
+img = ""
 
 # Function to calculate the actual image height based on the bounding boxes of each line
 def calculate_actual_image_height_with_empty_lines(text, font, line_spacing=10):
@@ -166,10 +186,10 @@ def calculate_max_font_size(width, text, font_path, start_size=10, end_size=200,
     for size in range(start_size, end_size, step):
         font = ImageFont.truetype(font_path, size)
         adjusted_lines = []
-        for line in text.split():
+        for line in text.split('\n'):
             adjusted_lines.append(line)
 
-        max_text_width = max([draw.textbbox((0, 0), line, font=font)[2] for line in adjusted_lines if line])
+        max_text_width = max([draw.textbbox((0, 0), line, font=font)[2] for line in adjusted_lines if line.strip()])
         
         if max_text_width <= width:
             max_font_size = size
@@ -180,145 +200,111 @@ def calculate_max_font_size(width, text, font_path, start_size=10, end_size=200,
 
 
 # Multiline Text Input
-text = st.text_area("Enter your text", "write\nsomething")
+text = st.text_area("Enter your text","write something", height=200)
+if text:                                                                                                                                                
+    urls = find_url(text)
+    if urls:
+        st.success("Found URLs: we might automate the QR code TODO")                                                                                                                        
+        for url in urls:
+            st.write(url)  
 
-col1, col2 = st.columns(2)
-
-# Font Selection
-with col1:
+    # init some font vars
     available_fonts = find_fonts()
-    font = st.selectbox("Choose your font", available_fonts)
-
-# Alignment
-with col2:
-    alignment_options = ["left", "center", "right"]
-    alignment = st.selectbox("Choose text alignment", alignment_options, index=1)
-
-# Font Size
-max_size = calculate_max_font_size(696, text, font) 
-font_size = st.slider("Font Size", 0, max_size, max_size)
-fnt = ImageFont.truetype(font, font_size) # Initialize Font
-
-line_spacing = 20  # Adjust this value to set the desired line spacing
-
-
-def rearrange_line(line, font, max_size):
-    draw = ImageDraw.Draw(Image.new("RGB", (1, 1), color="white"))
-    new_text = []
-    temp_line = ""
-    for word in line.split():
-        #print("out if:"+word)
-        if draw.textbbox((0, 0), temp_line +" "+ word, font=font)[2] <= 696:
-            #print("if print: "+word)
-            temp_line += word + " "
-        else:
-            new_text.append(temp_line[0:-1])
-            temp_line = word
-
-    new_text.append(temp_line)
-    #print(new_text)
-
-    return "\n".join(new_text)
-
-new_text = ""
-for line in text.split("\n"):
-    new_text += rearrange_line(line, fnt, max_size)
-    new_text += "\n"
-
-print(new_text)
-
-# Calculate the new image height based on the bounding boxes
-new_image_height = calculate_actual_image_height_with_empty_lines(new_text, fnt    , line_spacing)
-
-
-# Create Image
-y = 5  # Start from
-img = Image.new("RGB", (696, new_image_height+10), color="white")
-d = ImageDraw.Draw(img)
-
-
-# Draw Text
-for line in new_text.split('\n'):
-    #print(line)
-    text_width = 0  # Initialize to zero
+    font=available_fonts[0]
+    alignment = "center"
+    fnt = ImageFont.truetype(font, 20) # Initialize Font
+    max_size = calculate_max_font_size(696, text, font) 
+    font_size = max_size
     
-    #print(l)
-        
-    if line.strip():  # For non-empty lines
-        bbox = d.textbbox((0, y), line, font=fnt)
-        text_width = bbox[2] - bbox[0]
-        text_height = bbox[3] - bbox[1]
-    else:  # For empty lines
-        text_height = fnt.getbbox("x ")[3] - fnt.getbbox("x")[1]  # Use the height of an x as the height for empty lines
-        
-    if alignment == "center":
-        x = (696 - text_width) // 2
-    elif alignment == "right":
-        x = 696 - text_width
-    else:
-        x = 0
-    #print(y)
-    d.text((x, y), line, font=fnt, fill=(0, 0, 0))
-    y += text_height + line_spacing  # Move down based on text height and line spacing
+    fontstuff = st.checkbox("font settings", value=False)
+    col1, col2 = st.columns(2)
+    if fontstuff:
+        # Font Selection
+        with col1:
+            font = st.selectbox("Choose your font", available_fonts)
 
+        # Alignment
+        with col2:
+            alignment_options = ["left", "center", "right"]
+            alignment = st.selectbox("Choose text alignment", alignment_options, index=1)
+        font_size = st.slider("Font Size", 5, max_size+5, max_size)
+        font_size
+    # Font Size
+    fnt = ImageFont.truetype(font, font_size) # Initialize Font
+    line_spacing = 20  # Adjust this value to set the desired line spacing
 
-# Show Preview
-st.image(img, use_column_width=True)
+    # Calculate the new image height based on the bounding boxes
+    new_image_height = calculate_actual_image_height_with_empty_lines(text, fnt, line_spacing)
 
-cola, colb = st.columns(2)
+    # Create Image
+    y = 5  # Start from
+    img = Image.new("RGB", (696, new_image_height+10), color="white")
+    d = ImageDraw.Draw(img)
 
-# Checkbox in colb
-# with colb:
-    # not ready
-    # do_rotate = st.checkbox('Rotate')
-do_rotate = False
-# Print Label Button in cola
-with cola:
-    if st.button('Print label'):
-        if do_rotate:
-            # Initialize min and max coordinates for x and y
-            min_x, min_y = img.size
-            max_x = max_y = 0
+    # Draw Text
+    for line in text.split('\n'):
+        text_width = 0  # Initialize to zero
 
-            # Iterate over all pixels to find the bounding box
-            for y in range(img.height):
-                for x in range(img.width):
-                    # Get the color at this pixel
-                    pixel = img.getpixel((x, y))
-                    
-                    # If pixel is not white, update min and max coordinates
-                    if pixel != (255, 255, 255):
-                        min_x = min(min_x, x)
-                        min_y = min(min_y, y)
-                        max_x = max(max_x, x)
-                        max_y = max(max_y, y)
+        if line.strip():  # For non-empty lines
+            bbox = d.textbbox((0, y), line, font=fnt)
+            text_width = bbox[2] - bbox[0]
+            text_height = bbox[3] - bbox[1]
+        else:  # For empty lines
+            text_height = fnt.getbbox("x ")[3] - fnt.getbbox("x")[1]  # Use the height of an x as the height for empty lines
 
-            # Define the bounding box to crop
-            bbox = (min_x, min_y, max_x, max_y)
-            #if image is not rgb convert
-            if img.mode != 'RGB':
-                img = img.convert('RGB')
-            # Crop the image using the bounding box
-            cropped_img = img.crop(bbox)
-            #scale to 30%
-            cropped_img = cropped_img.resize((int(cropped_img.width * 0.3), cropped_img.height), Image.NEAREST)
-
-            # Display the cropped image (for demonstration, in your case you would use 
-            st.image(cropped_img, use_column_width=True)
-
-            # rotated_image = rotate_image(img, 90)  # Needs definition
-            # print_image(rotated_image)  # Needs definition
-            # st.success('Label sent to printer')
-
+        if alignment == "center":
+            x = (696 - text_width) // 2
+        elif alignment == "right":
+            x = 696 - text_width
         else:
+            x = 0
+
+        d.text((x, y), line, font=fnt, fill=(0, 0, 0))
+        y += text_height + line_spacing  # Move down based on text height and line spacing
+
+
+
+
+
+# QR code
+
+
+import qrcode
+qr = qrcode.QRCode(
+    border=0
+)
+
+qrurl = st.text_input("add a QRcode to your sticker",)
+if qrurl:
+    #we have text generate qr
+    qr.add_data(qrurl)
+    qr.make(fit=True)
+    imgqr = qr.make_image(fill_color="black", back_color="white")
+
+    #save to image
+    # add random 4 letetrs to file name
+    # letters = string.ascii_lowercase
+    # random_string = ''.join(random.choice(letters) for i in range(4))
+    # qrimgpath = os.path.join('temp', "qr_" + random_string + '.png')
+    # imgqr.save(qrimgpath, "PNG")
+
+    if imgqr and img:
+        #add qr below the label
+        imgqr = img_concat_v(img, imgqr)
+        st.image(imgqr, use_column_width=True)
+        if st.button('Print sticker+qr'):
+                print_image(imgqr)
+    elif imgqr and not(img):
+        # st.image(imgqr, use_column_width=True)
+        if st.button('Print sticker'):
+                print_image(imgqr)
+
+
+if text and not(qrurl):
+    st.image(img, use_column_width=True)
+    if st.button('Print sticker'):
             print_image(img)  # Needs definition
-            st.success('Label sent to printer')
-
-
-
-
-
-
+            st.success('sticker sent to printer')
 
 
 
@@ -327,7 +313,7 @@ with cola:
 
 
 st.divider() 
-st.subheader("or generate an image from text")
+st.subheader(":printer: image from text")
 st.write("using tami stable diffusion bot")
 prompt = st.text_input("Enter a prompt")
 if prompt:
